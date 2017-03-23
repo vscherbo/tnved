@@ -89,7 +89,8 @@ else:
 
             logging.debug("before insert_cmd")
             insert_cmd = """INSERT INTO tnved(tnved_code, import_duty, tnved_name, src_url, url_response)
-            VALUES(%s, %s, %s, %s, %s);
+            VALUES(%s, %s, %s, %s, %s) 
+            ON CONFLICT (tnved_code,import_duty,tnved_name) DO UPDATE SET url_response = excluded.url_response;
             """
             curs.execute(insert_cmd, (tnved_code, import_duty, tnved_name, url, resp.text))
 
