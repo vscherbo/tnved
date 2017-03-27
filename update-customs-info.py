@@ -38,6 +38,7 @@ else:
     select_cmd = 'SELECT DISTINCT "КодТНВЭД" FROM "Содержание" WHERE "КодТНВЭД" IS NOT NULL;'
     curs.execute(select_cmd)
     tnved_list = curs.fetchall()
+    # DEBUG tnved_list = [('8541300009',)]
 
     #for i, (items) in enumerate(tnved_list):
     #    print "N={0}, код={1}".format(i, items[0])
@@ -62,13 +63,20 @@ else:
             # soup = BeautifulSoup(resp.text.decode('utf8'), 'html.parser')
             soup = BeautifulSoup(resp.text, 'html.parser')
 
-            # print(soup.get_text())
+            # logging.debug(soup.get_text())
             duty_next = False
+            import_section = False
+            dual_use_next = False
             prev_str = ''
+            dual_use_str = ''
+            import_duty = None
             for t in [text.encode('utf8') for text in soup.stripped_strings]:
                 if 'ИМПОРТ' == t:
+                    import_section = True
                     tnved_name = prev_str.strip('-').strip()
                     logging.debug('tnved_name=[%s]', tnved_name)
+                if 'ЭКСПОРТ' == t:
+                    import_section = False
                 if duty_next:
                     duty_next = False
                     import_duty = 0.0
@@ -83,16 +91,25 @@ else:
                         else:
                             correct_duty = True
                     logging.debug('import_duty=%s', import_duty)
+                if dual_use_next:
+                    dual_use_next = False
+                    dual_use_str = t
                 if 'Импортная пошлина' == t:
                     duty_next = True
+                if 'Двойное применение' == t:
+                    dual_use_next = True
                 prev_str = t
 
-            logging.debug("before insert_cmd")
-            insert_cmd = """INSERT INTO tnved(tnved_code, import_duty, tnved_name, src_url, url_response)
-            VALUES(%s, %s, %s, %s, %s) 
-            ON CONFLICT (tnved_code,import_duty,tnved_name) DO UPDATE SET url_response = excluded.url_response;
-            """
-            curs.execute(insert_cmd, (tnved_code, import_duty, tnved_name, url, resp.text))
+            if import_duty is not None:
+                # logging.debug("before insert_cmd")
+                insert_cmd = """INSERT INTO tnved(tnved_code, import_duty, tnved_name, dual_use, src_url, url_response)
+                VALUES(%s, %s, %s, %s, %s, %s) 
+                ON CONFLICT (tnved_code,import_duty,tnved_name) DO UPDATE SET url_response = excluded.url_response, dual_use = ' 
+                """ + dual_use_str + "';"
+                # logging.debug("insert_cmd={0}".format(insert_cmd))
+                curs.execute(insert_cmd, (tnved_code, import_duty, tnved_name, dual_use_str, url, resp.text))
+            else:
+                logging.warning("import_duty is None for tnved_code={0}".format(tnved_code))
 
 
         except Exception as e:
